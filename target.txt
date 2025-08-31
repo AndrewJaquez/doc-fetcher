@@ -1,1 +1,1 @@
-https://developers.google.com/google-ads/api/docs/start
+https://ads-api.reddit.com/docs/v3/
