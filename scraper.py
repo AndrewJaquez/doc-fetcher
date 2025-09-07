@@ -203,7 +203,7 @@ class DocScraper:
     
     def save_to_file(self):
         with open(self.output_file, 'w', encoding='utf-8') as f:
-            f.write("Reddit Ads API Documentation\n")
+            f.write("Doc-Fetcher API Documentation\n")
             f.write("=" * 50 + "\n\n")
             
             for page in self.scraped_content:
@@ -229,7 +229,7 @@ def main():
     except FileNotFoundError:
         pass
     
-    scraper = DocScraper(target_url, "reddit_ads_docs.txt")
+    scraper = DocScraper(target_url, "docs.txt")
     scraper.scrape_docs()
     scraper.save_to_file()
 

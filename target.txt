@@ -1,1 +1,1 @@
-https://ads-api.reddit.com/docs/v3/
+https://docs.n8n.io/integrations/creating-nodes
