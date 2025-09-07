@@ -1,1 +1,0 @@
-build a scraper tool that turns public-facing API docs into a single .txt file

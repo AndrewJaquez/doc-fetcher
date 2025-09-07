@@ -1,1 +1,1 @@
-https://docs.n8n.io/integrations/creating-nodes
+https://docs.n8n.io/integrations/creating-nodes/plan/

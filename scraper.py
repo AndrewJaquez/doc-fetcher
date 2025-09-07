@@ -82,15 +82,96 @@ class DocScraper:
             
             print(f"  → Extracted {len(text_content)} text blocks")
             
-            # Find links to other docs pages
-            links = []
+            # Separate regular links from navigation links
+            regular_links = []
+            next_links = []
+            
+            # Find regular links to other docs pages
             for link in content_area.find_all('a', href=True):
                 href = link['href']
                 full_url = urljoin(url, href)
                 if self.is_valid_docs_url(full_url) and full_url not in self.visited_urls:
-                    links.append(full_url)
+                    regular_links.append(full_url)
             
-            return title_text, text_content, links
+            # Also look for Next buttons and pagination links in the entire page
+            next_buttons = soup.find_all('a', href=True, string=lambda text: text and 'next' in text.lower())
+            for button in next_buttons:
+                href = button['href']
+                full_url = urljoin(url, href)
+                if self.is_valid_docs_url(full_url) and full_url not in self.visited_urls and full_url not in regular_links:
+                    next_links.append(full_url)
+                    print(f"  → Found Next button: {full_url}")
+            
+            # Look for navigation arrows and buttons with specific classes/attributes
+            nav_selectors = [
+                'a[aria-label*="next"]',
+                'a[aria-label*="Next"]',
+                'a[class*="next"]',
+                'a[class*="pagination"]',
+                '.next a',
+                '.pagination a',
+                '[class*="nav"] a',
+                # Footer navigation patterns
+                'nav[class*="footer"] a',
+                '.md-footer a',
+                'footer nav a',
+                'footer a',
+                # Material Design footer patterns
+                '.md-footer__link--next',
+                'a.md-footer__link--next',
+                # Generic footer navigation
+                '[class*="footer"] a[class*="next"]',
+                '[class*="footer"] a[aria-label*="next"]',
+                '[class*="footer"] a[aria-label*="Next"]',
+                # Documentation navigation patterns
+                '.doc-nav a',
+                '.docs-nav a',
+                '.page-nav a',
+                '[class*="page-navigation"] a',
+                '[class*="doc-navigation"] a'
+            ]
+            
+            for selector in nav_selectors:
+                try:
+                    nav_links = soup.select(selector)
+                    for nav_link in nav_links:
+                        if nav_link.get('href'):
+                            href = nav_link['href']
+                            full_url = urljoin(url, href)
+                            if self.is_valid_docs_url(full_url) and full_url not in self.visited_urls and full_url not in regular_links and full_url not in next_links:
+                                # Check if this looks like a next/forward navigation
+                                link_text = nav_link.get_text().strip().lower()
+                                link_classes = str(nav_link.get('class', [])).lower()
+                                aria_label = nav_link.get('aria-label', '').lower()
+                                
+                                # Keywords for next/forward navigation
+                                next_keywords = ['next', '→', '>', 'continue', 'forward', 'siguiente']
+                                
+                                # Check text content, classes, and aria-label
+                                is_next_link = (
+                                    any(keyword in link_text for keyword in next_keywords) or
+                                    any(keyword in link_classes for keyword in ['next', 'forward']) or
+                                    any(keyword in aria_label for keyword in next_keywords) or
+                                    'next' in aria_label
+                                )
+                                
+                                # Special handling for Material Design and common patterns
+                                if ('md-footer__link--next' in link_classes or 
+                                    'footer' in link_classes or
+                                    nav_link.find(string=lambda text: text and 'next' in text.lower())):
+                                    is_next_link = True
+                                
+                                if is_next_link:
+                                    next_links.append(full_url)
+                                    print(f"  → Found navigation link: {full_url} (text: '{nav_link.get_text().strip()}')")
+                except Exception as e:
+                    # Continue if CSS selector fails
+                    continue
+            
+            # Return next links first for sequential navigation, then regular links
+            all_links = next_links + regular_links
+            
+            return title_text, text_content, all_links
             
         except Exception as e:
             print(f"Error scraping {url}: {e}")
@@ -163,16 +244,24 @@ class DocScraper:
             return None, [], []
     
     def scrape_docs(self, max_pages=1000):
-        queue = deque([self.base_url])
+        # Use two queues: priority queue for next/navigation links, regular queue for other links
+        priority_queue = deque([self.base_url])
+        regular_queue = deque()
         page_count = 0
         
-        while queue and page_count < max_pages:
-            url = queue.popleft()
+        while (priority_queue or regular_queue) and page_count < max_pages:
+            # Always prioritize navigation links over regular links
+            if priority_queue:
+                url = priority_queue.popleft()
+                queue_type = "PRIORITY"
+            else:
+                url = regular_queue.popleft()
+                queue_type = "REGULAR"
             
             if url in self.visited_urls:
                 continue
                 
-            print(f"Scraping ({page_count + 1}/{max_pages}): {url}")
+            print(f"Scraping ({page_count + 1}/{max_pages}) [{queue_type}]: {url}")
             self.visited_urls.add(url)
             
             result = self.extract_content(url)
@@ -190,11 +279,22 @@ class DocScraper:
                 })
                 print(f"  → Scraped content: {len(content)} blocks")
                 
-                # Add new links to queue
-                for link in links:
+                # Add new links to appropriate queues
+                # First few links are next/navigation links (returned first from extract_content)
+                next_link_count = 0
+                for i, link in enumerate(links):
                     if link not in self.visited_urls:
-                        queue.append(link)
-                        print(f"  → Added to queue: {link}")
+                        # First 2-3 links are likely next/navigation links based on our prioritization
+                        if i < 3 and any(indicator in link.lower() for indicator in ['next', 'plan', 'step', 'part']):
+                            priority_queue.append(link)
+                            print(f"  → Added to priority queue: {link}")
+                            next_link_count += 1
+                        else:
+                            regular_queue.append(link)
+                            print(f"  → Added to regular queue: {link}")
+                
+                if next_link_count > 0:
+                    print(f"  → Found {next_link_count} navigation links to prioritize")
             else:
                 print(f"  → No content found on this page")
             
