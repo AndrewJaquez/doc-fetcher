@@ -8,5 +8,5 @@ pip install -r requirements.txt
 ```
 5. run
 ```
-python run scraper.py
+python scraper.py
 ```
